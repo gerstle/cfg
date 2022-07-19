@@ -1,1 +1,90 @@
-/Users/cgerstle/src/personal/zsh_config/config/alias
+# ------------------------------------------------------------------------------
+# misc
+# ------------------------------------------------------------------------------
+alias weather='curl wttr.in/Santa_Cruz'
+alias hg='history 1 | grep'
+fe () { find . -name $1 -exec vim {} + ; }
+rm-known-host () { sed -i .bak "$1d" ~/.ssh/known_hosts }
+alias ll="ls -hlFG"
+alias curl="curl -s"
+alias gw="./gradlew"
+
+# ------------------------------------------------------------------------------
+# vi...
+# ------------------------------------------------------------------------------
+alias vim="vim"
+alias e="vim"
+alias :e="vim"
+
+# ------------------------------------------------------------------------------
+# mac stuff
+# ------------------------------------------------------------------------------
+alias f='open -a Finder ./' # open current directory in finder
+trash () { command mv "$@" ~/.Trash ; }     # trash:        Moves a file to the MacOS trash
+ql () { qlmanage -p "$*" >& /dev/null; }    # ql:           Opens any file in MacOS Quicklook Preview
+
+# ------------------------------------------------------------------------------
+# git
+# ------------------------------------------------------------------------------
+alias git-prune-merged='comm -12 <(git branch | sed "s/ *//g") <(git remote prune origin | sed "s/^.*origin\///g") | xargs -L1 -J % git branch -D %'
+function parse_git_branch () {
+  git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
+}
+
+alias git-branch-desc='git branch | while read line; do 
+    description=$(git config branch.$(echo "$line" | sed "s/\* //g").description)
+    echo "$line"
+    if [ "$description" ]
+    then
+        echo "        $description"
+    fi
+done'
+
+# ------------------------------------------------------------------------------
+# docker
+# ------------------------------------------------------------------------------
+function dsh() { docker exec -e COLUMNS="`tput cols`" -e LINES="`tput lines`" -it $(docker ps | grep $1 | cut -d" " -f1) /bin/bash; }
+function dstart() { docker container start $(docker ps -a | grep $1 | cut -d" " -f1); }
+function dstop() { docker container stop $(docker ps -a | grep $1 | cut -d" " -f1); }
+
+# ------------------------------------------------------------------------------
+# ruby
+# ------------------------------------------------------------------------------
+alias be='bundle exec'
+alias br='be rake'
+alias c='br c'
+alias cop='be rubocop'
+
+
+# ------------------------------------------------------------------------------
+# python scripts
+# ------------------------------------------------------------------------------
+function timet() {
+    DIR="/Users/cgerstle/src/personal/py-scripts"
+    $DIR/venv/bin/python $DIR/timet.py "$@"
+}
+
+function emoji() {
+    DIR="/Users/cgerstle/src/personal/py-scripts"
+    EMOJI=$($DIR/venv/bin/python $DIR/emoji.py "$@") 
+    echo $EMOJI | tr -d '\n' | tr -d '\r' | pbcopy
+    echo $EMOJI
+}
+
+# ------------------------------------------------------------------------------
+# pulsara
+# ------------------------------------------------------------------------------
+alias vssh='vagrant ssh $(vagrant global-status | grep "\<single\>" | perl -lane "print @F[0]")'
+alias ch='conhost.sh'
+env-config() {
+    if [ -z "$1" ]; then
+        echo "Usage: env-config <environment name> <app>"
+    fi
+
+    branch="deployments/$1"
+    token=$(cat ~/.github/pat)
+    curl -s -H "Authorization: token ${token}" -H 'Accept: application/vnd.github.v3.raw' "https://api.github.com/repos/CommuniCare-Technology/infrastructure/contents/configs/${1}/${2}.config.yml?ref=${branch}" | bat -l yaml
+}
+ecr-tags() {
+	aws ecr describe-images --repository-name $1 --query 'sort_by(imageDetails,& imagePushedAt)[*]' | jq '.[-5:] | .[] | .imageDigest, .imageTags'
+}
