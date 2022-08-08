@@ -2,7 +2,10 @@
 
 Uses the bare repo approach outlined here: https://www.atlassian.com/git/tutorials/dotfiles
 
-# TODO
+1. `echo ".cfg" >> .gitignore`
+2. `git clone --bare git@github.com:gerstle/cfg.git $HOME/.cfg`
+3. `alias config='/usr/bin/git --git-dir=$HOME/.cfg/ --work-tree=$HOME'`
+4. `config checkout`
+5. delete any conflicts, re-run checkout
+6. `config config --local status.showUntrackedFiles no`
 
-* Migrate from my old zsh_config repo over to this... mostly scrapping/fixing the setup.sh
-* Migrate off of antibody, I think I can just use brew to install `powerlevel10k`, `zsh-users/zsh-autosuggestions`, `zsh-users/zsh-completions`

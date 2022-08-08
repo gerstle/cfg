@@ -5,9 +5,7 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-source <(antibody init)
-antibody bundle romkatv/powerlevel10k
-antibody bundle < ~/.zsh_plugins
+source $(brew --prefix)/opt/powerlevel10k/powerlevel10k.zsh-theme
 
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
@@ -29,7 +27,7 @@ source ~/.alias
 . /opt/homebrew/opt/asdf/libexec/asdf.sh
 
 # append completions to fpath
-fpath=(/usr/local/share/zsh/site-functions /usr/share/zsh/site-functions /usr/share/zsh/5.7.1/functions /Users/cgerstle/Library/Caches/antibody/https-COLON--SLASH--SLASH-github.com-SLASH-zsh-users-SLASH-zsh-autosuggestions /Users/cgerstle/Library/Caches/antibody/https-COLON--SLASH--SLASH-github.com-SLASH-zsh-users-SLASH-zsh-completions/src /Users/cgerstle/Library/Caches/antibody/https-COLON--SLASH--SLASH-github.com-SLASH-zsh-users-SLASH-zsh-completions /Users/cgerstle/Library/Caches/antibody/https-COLON--SLASH--SLASH-github.com-SLASH-romkatv-SLASH-powerlevel10k ${ASDF_DIR}/completions $fpath)
+fpath=(/usr/local/share/zsh/site-functions /usr/share/zsh/site-functions /usr/share/zsh/5.7.1/functions ${ASDF_DIR}/completions $fpath)
 # initialise completions with ZSH's compinit
 autoload -Uz compinit && compinit
 export RUBY_CONFIGURE_OPTS="--with-openssl-dir=$(brew --prefix openssl@1.1)"
@@ -64,4 +62,4 @@ bindkey -M vicmd 'J' up-history
 
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 export HOMEBREW_GITHUB_API_TOKEN=$(cat ~/.github/pat)
-alias config='/usr/bin/git --git-dir=/Users/cgerstle/.cfg/ --work-tree=/Users/cgerstle'
+alias config='/usr/bin/git --git-dir=$HOME/.cfg/ --work-tree=$HOME'
