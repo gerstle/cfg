@@ -1,9 +1,9 @@
 [user]
 	name = casey gerstle
-	email = casey.gerstle@pulsara.com
+	email = caseyg@projectronin.com
 [core]
 	autocrlf = input
-	excludesfile = /Users/cgerstle/.gitignore
+	excludesfile = /Users/caseygerstle/.gitignore
 [alias]
 	unstage = reset HEAD
 	alias = config --get-regexp ^alias\\.
