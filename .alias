@@ -39,6 +39,7 @@ alias git-branch-desc='git branch | while read line; do
         echo "        $description"
     fi
 done'
+alias gitroot='cd $(git rev-parse --show-toplevel)'
 
 # ------------------------------------------------------------------------------
 # docker
@@ -60,13 +61,22 @@ alias cop='be rubocop'
 # python scripts
 # ------------------------------------------------------------------------------
 function timet() {
-    DIR="/Users/cgerstle/src/personal/py-scripts"
-    $DIR/venv/bin/python $DIR/timet.py "$@"
+    # DIR="/Users/cgerstle/src/personal/py-scripts"
+    # $DIR/venv/bin/python $DIR/timet.py "$@"
+
+    if [ "$1" ]
+    then
+        timestamp_seconds=${1:0:10}
+        zmodload zsh/datetime
+        TZ=UTC strftime '%Y-%m-%d %H:%M:%S %z' $timestamp_seconds
+        strftime '%Y-%m-%d %H:%M:%S %z' $timestamp_seconds
+    else
+        date '+%s'
+    fi
 }
 
 function emoji() {
-    DIR="/Users/cgerstle/src/personal/py-scripts"
-    EMOJI=$($DIR/venv/bin/python $DIR/emoji.py "$@") 
+    EMOJI=$(shuf -n 1 ~/emojis.txt) 
     echo $EMOJI | tr -d '\n' | tr -d '\r' | pbcopy
     echo $EMOJI
 }
@@ -74,17 +84,29 @@ function emoji() {
 # ------------------------------------------------------------------------------
 # pulsara
 # ------------------------------------------------------------------------------
-alias vssh='vagrant ssh $(vagrant global-status | grep "\<single\>" | perl -lane "print @F[0]")'
-alias ch='conhost.sh'
-env-config() {
-    if [ -z "$1" ]; then
-        echo "Usage: env-config <environment name> <app>"
-    fi
-
-    branch="deployments/$1"
-    token=$(cat ~/.github/pat)
-    curl -s -H "Authorization: token ${token}" -H 'Accept: application/vnd.github.v3.raw' "https://api.github.com/repos/CommuniCare-Technology/infrastructure/contents/configs/${1}/${2}.config.yml?ref=${branch}" | bat -l yaml
-}
 ecr-tags() {
 	aws ecr describe-images --repository-name $1 --query 'sort_by(imageDetails,& imagePushedAt)[*]' | jq '.[-5:] | .[] | .imageDigest, .imageTags'
+}
+
+# ------------------------------------------------------------------------------
+# k8s
+# ------------------------------------------------------------------------------
+alias k=kubectl
+
+# ------------------------------------------------------------------------------
+# `config` for bare repo dotfile management
+# ------------------------------------------------------------------------------
+alias config='/usr/bin/git --git-dir=$HOME/.cfg/ --work-tree=$HOME'
+
+# ------------------------------------------------------------------------------
+# ronin
+# ------------------------------------------------------------------------------
+init-argo() {
+    export ARGO_SERVER='argo-wf.devops.projectronin.io:443' 
+    export ARGO_HTTP1=true  
+    export ARGO_SECURE=true
+    export ARGO_BASE_HREF=
+    export ARGO_TOKEN='Bearer v2:eyJhbGciOiJSU0EtT0FFUC0yNTYiLCJlbmMiOiJBMjU2R0NNIiwiemlwIjoiREVGIn0.hcP5l2SQsOQ0s8p2JP9TEXrmSwBhqmqsSzmSOJeevKg2enuGxtZFURT4LJB0e28MoZbttsEVXCWFQ4ziX5gbHUU_gTOCWj0BiA0Dlp0OKjHCwUtl4yWNNz9nipAHcwYp2lh0XZQAjXv_b9ZztxBVhlBlwKIU5K-Jr0G_SrBZDG_Q93Yw2jJAfhxf5Jd5OyrPgQ8rS0eQ53gdKb4bEszskhvCVzeJCLOkQ23Bl0F3Iit78sy873vLM4e70yTrK3X3Y1VQZfcVSfUYIwkRwgZmZAttVgzQI_TPvSrGbRF3_orrfLx5L6B4YFxhhPGgOSZkz3hK78cBC4MvZ0NE9Gl3cg.st3PuozNTe5qMlvd.8XGNQQSE9-y6NW6e19Nj6i_ecKZH6oLOpAfXvfcBD9boPtq7BqazNuBjN3CL_Ugd67BcOjhsbBUMhh9ebcMAOuzBn2pvjQhFGpR9tXN_-bh0Alg.6s_P2hcYieGGgXiR_mX0nA' 
+    export ARGO_NAMESPACE=argo-wf
+    export KUBECONFIG=/dev/null
 }

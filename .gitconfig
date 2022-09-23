@@ -14,6 +14,7 @@
 	diff-log = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr)%Creset' --abbrev-commit --date=relative
 	br = branch
 	co = checkout
+    tree = log --all --graph --decorate --oneline --simplify-by-decoration
 [merge]
 	tool = gvimdiff
 [pager]

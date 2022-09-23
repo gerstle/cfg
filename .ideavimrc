@@ -1,0 +1,7 @@
+set number
+set idearefactormode=keep
+set ideajoin
+set surround
+set easymotion
+set ignorecase
+set smartcase

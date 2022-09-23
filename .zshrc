@@ -8,9 +8,15 @@ fi
 source $(brew --prefix)/opt/powerlevel10k/powerlevel10k.zsh-theme
 source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 
+autoload -Uz compinit
+compinit
+[[ $commands[kubectl] ]] && source <(kubectl completion zsh)
+
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
 export PATH=$HOME:/usr/local/sbin:~/bin/:~/src/pulsara/devops/deployment/bin:/usr/local/opt/terraform@0.13/bin:$PATH
+export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
 
 setopt HIST_IGNORE_DUPS
 setopt APPENDHISTORY     #Append history to the history file (no overwriting)
@@ -56,5 +62,10 @@ bindkey -M vicmd 'K' up-history
 bindkey -M vicmd 'J' up-history
 
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
+
 export HOMEBREW_GITHUB_API_TOKEN=$(cat ~/.github/pat)
-alias config='/usr/bin/git --git-dir=$HOME/.cfg/ --work-tree=$HOME'
+export GREP_OPTIONS="--color=always"
+
+### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
+export PATH="/Users/caseygerstle/.rd/bin:$PATH"
+### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
