@@ -36,6 +36,8 @@ source ~/.alias
 # Use vim cli mode
 bindkey -v
 export KEYTIMEOUT=1
+set editing-mode vi
+set blink-matching-paren on
 
 # home/end fixes for mac & iterm2
 bindkey '^[[H' beginning-of-line
@@ -63,9 +65,17 @@ bindkey -M vicmd 'J' up-history
 
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
-export HOMEBREW_GITHUB_API_TOKEN=$(cat ~/.github/pat)
+export HOMEBREW_GITHUB_API_TOKEN=$(cat ~/.config/gh/pat)
 export GREP_OPTIONS="--color=always"
+
+
+# Created by `pipx` on 2022-10-11 20:00:33
+export PATH="$PATH:/Users/caseygerstle/.local/bin"
+. ~/.asdf/plugins/java/set-java-home.zsh
 
 ### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
 export PATH="/Users/caseygerstle/.rd/bin:$PATH"
 ### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
+
+export LIQUIBASE_HOME=/opt/homebrew/opt/liquibase/libexec
+export _JAVA_OPTIONS="-Djava.net.preferIPv4Stack=true"

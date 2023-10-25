@@ -5,3 +5,4 @@ set surround
 set easymotion
 set ignorecase
 set smartcase
+set hlsearch

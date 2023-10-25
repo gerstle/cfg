@@ -8,6 +8,8 @@ rm-known-host () { sed -i .bak "$1d" ~/.ssh/known_hosts }
 alias ll="ls -hlFG"
 alias curl="curl -s"
 alias gw="./gradlew"
+alias tf="terraform"
+alias week='date +"%Y: week %U"'
 
 # ------------------------------------------------------------------------------
 # vi...
@@ -40,13 +42,20 @@ alias git-branch-desc='git branch | while read line; do
     fi
 done'
 alias gitroot='cd $(git rev-parse --show-toplevel)'
+alias git-reset='git m && git pull && git-prune-merged'
 
 # ------------------------------------------------------------------------------
-# docker
+# containers
 # ------------------------------------------------------------------------------
-function dsh() { docker exec -e COLUMNS="`tput cols`" -e LINES="`tput lines`" -it $(docker ps | grep $1 | cut -d" " -f1) /bin/bash; }
-function dstart() { docker container start $(docker ps -a | grep $1 | cut -d" " -f1); }
-function dstop() { docker container stop $(docker ps -a | grep $1 | cut -d" " -f1); }
+function dsh() { docker exec -e COLUMNS="`tput cols`" -e LINES="`tput lines`" -it $(docker ps | grep --color=never $1 | cut -d" " -f1) /bin/bash; }
+function dstart() { docker container start $(docker ps -a | grep --color=never $1 | cut -d " " -f1); }
+function dstop() { docker container stop $(docker ps -a | grep --color=never $1 | cut -d " " -f1); }
+function dlog() { docker logs -f --since 1m $(docker ps -a | grep --color=never $1 | cut -d " " -f1); }
+function klog() {
+    pod=$(kubectl get pods | grep --color=never $1 | cut -d " " -f1)
+    echo "$pod logs..."
+    kubectl logs -f $pod;
+}
 
 # ------------------------------------------------------------------------------
 # ruby
@@ -109,4 +118,9 @@ init-argo() {
     export ARGO_TOKEN='Bearer v2:eyJhbGciOiJSU0EtT0FFUC0yNTYiLCJlbmMiOiJBMjU2R0NNIiwiemlwIjoiREVGIn0.hcP5l2SQsOQ0s8p2JP9TEXrmSwBhqmqsSzmSOJeevKg2enuGxtZFURT4LJB0e28MoZbttsEVXCWFQ4ziX5gbHUU_gTOCWj0BiA0Dlp0OKjHCwUtl4yWNNz9nipAHcwYp2lh0XZQAjXv_b9ZztxBVhlBlwKIU5K-Jr0G_SrBZDG_Q93Yw2jJAfhxf5Jd5OyrPgQ8rS0eQ53gdKb4bEszskhvCVzeJCLOkQ23Bl0F3Iit78sy873vLM4e70yTrK3X3Y1VQZfcVSfUYIwkRwgZmZAttVgzQI_TPvSrGbRF3_orrfLx5L6B4YFxhhPGgOSZkz3hK78cBC4MvZ0NE9Gl3cg.st3PuozNTe5qMlvd.8XGNQQSE9-y6NW6e19Nj6i_ecKZH6oLOpAfXvfcBD9boPtq7BqazNuBjN3CL_Ugd67BcOjhsbBUMhh9ebcMAOuzBn2pvjQhFGpR9tXN_-bh0Alg.6s_P2hcYieGGgXiR_mX0nA' 
     export ARGO_NAMESPACE=argo-wf
     export KUBECONFIG=/dev/null
+}
+
+vault-login() {
+    export VAULT_ADDR=https://vault.devops.projectronin.io
+    vault login -address=${VAULT_ADDR} -method=okta username=caseyg
 }
