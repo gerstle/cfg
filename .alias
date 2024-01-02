@@ -138,6 +138,18 @@ sdm-find() {
 
 sdm-mysql() {
     datasource_status=$(sdm-find "$@" | sed -r 's/ {2,}/\t/g')
+
+    results=$(echo "${datasource_status}" | wc -l | xargs)
+    if [ "${results}" != "1" ]; then
+        echo "More than one datasource found with '$@', please be more specific."
+        echo "Matching datasources:"
+        while IFS= read -r line; do
+            source=$(echo "${line}" | cut -f2)
+            echo "  ${source}"
+        done <<< "${datasource_status}"
+        return
+    fi
+
     datasource=$(echo "${datasource_status}" | cut -f2)
     connected=$(echo "${datasource_status}" | cut -f3)
     address=$(echo "${datasource_status}" | cut -f4)
@@ -165,6 +177,7 @@ sdm-mysql() {
     host=$(echo "${address}" | cut -d ":" -f1)
     port=$(echo "${address}" | cut -d ":" -f2)
     mysql -h "${host}" -P "${port}" -u ronin -p
+    sdm disconnect "${datasource}"
 }
 
 sdm-close() {
