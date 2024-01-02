@@ -124,3 +124,60 @@ vault-login() {
     export VAULT_ADDR=https://vault.devops.projectronin.io
     vault login -address=${VAULT_ADDR} -method=okta username=caseyg
 }
+
+sdm-find() {
+    terms=("$@")
+    args=""
+    for t in "${terms[@]}"; do
+        args="${args} | grep -w --color=never ${t}"
+    done
+    cmd="sdm status ${args}"
+
+    eval "${cmd}"
+}
+
+sdm-mysql() {
+    datasource_status=$(sdm-find "$@" | sed -r 's/ {2,}/\t/g')
+    datasource=$(echo "${datasource_status}" | cut -f2)
+    connected=$(echo "${datasource_status}" | cut -f3)
+    address=$(echo "${datasource_status}" | cut -f4)
+    type=$(echo "${datasource_status}" | cut -f5)
+
+    echo "${datasource}:"
+    echo "  connected: ${connected}"
+    echo "  address: ${address}"
+    echo "  type: ${type}"
+
+    if [ "${type}" != "mysql" ]; then
+        echo "not a mysql type!"
+        return
+    fi
+
+    if [ "${connected}" = "not connected" ]; then
+        printf "connecting... "
+        sdm connect ${datasource}
+        if [ "$?" != "0" ]; then
+            echo "connection failed!"
+            return
+        fi
+    fi
+
+    host=$(echo "${address}" | cut -d ":" -f1)
+    port=$(echo "${address}" | cut -d ":" -f2)
+    mysql -h "${host}" -P "${port}" -u ronin -p
+}
+
+sdm-close() {
+    sources=$(sdm status)
+    while IFS= read -r line; do
+        data=$(echo "${line}" | sed -r 's/ {2,}/\t/g')
+        source=$(echo "${data}" | cut -f2)
+        connected=$(echo "${data}" | cut -f3)
+        
+        if [ "${connected}" = 'connected' ]; then
+            printf "%s: %s --> " "${source}" "${connected}"
+            sdm disconnect "${source}"
+        fi
+    done <<< "$sources"
+    echo "done."
+}
