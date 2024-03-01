@@ -9,7 +9,7 @@ alias ll="ls -hlFG"
 alias curl="curl -s"
 alias gw="./gradlew"
 alias tf="terraform"
-alias week='date +"%Y: week %U"'
+alias week='date +"%Y: week %V"'
 
 # ------------------------------------------------------------------------------
 # vi...
