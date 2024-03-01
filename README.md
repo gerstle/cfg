@@ -4,7 +4,7 @@ Uses the bare repo approach outlined here: https://www.atlassian.com/git/tutoria
 
 # setup
 
-1. `brew install romkatv/powerlevel10k/powerlevel10k`
+1. `git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/powerlevel10k && echo 'source ~/powerlevel10k/powerlevel10k.zsh-theme' >>~/.zshrc`
 2. `brew install zsh-autosuggestions`
 3. `brew install zsh-completions`
 4. `brew install asdf`
@@ -14,4 +14,3 @@ Uses the bare repo approach outlined here: https://www.atlassian.com/git/tutoria
 8. `config checkout`
 9. delete any conflicts, re-run checkout
 10. `config config --local status.showUntrackedFiles no`
-
