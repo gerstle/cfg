@@ -1,6 +1,6 @@
 [user]
-	name = casey gerstle
-	email = caseyg@projectronin.com
+	name = Casey Gerstle
+	email = casey.gerstle@oracle.com
 [core]
 	autocrlf = input
 	excludesfile = /Users/caseygerstle/.gitignore
@@ -15,7 +15,8 @@
 	br = branch
 	co = checkout
     tree = log --all --graph --decorate --oneline --simplify-by-decoration
-    main-branch = !git symbolic-ref refs/remotes/origin/HEAD | cut -d'/' -f4
+    old-main-branch = !git symbolic-ref refs/remotes/origin/HEAD | cut -d'/' -f4
+    main-branch = !git remote show origin | sed -ne '/HEAD/ s/HEAD branch:\\(.*\\)/\\1/p' | xargs
     m = "!f(){ git switch $(git main-branch) $@;}; f"
 [merge]
 	tool = gvimdiff

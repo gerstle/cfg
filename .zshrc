@@ -5,23 +5,32 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
+# Prompt, suggestions, and completion.
 source ~/powerlevel10k/powerlevel10k.zsh-theme
-source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+source "${HOMEBREW_PREFIX:-$(brew --prefix)}/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+fpath=("${ASDF_DATA_DIR:-$HOME/.asdf}/completions" $fpath)
+fpath+=("$HOME/.zfunc")
 
 autoload -Uz compinit
 compinit
-[[ $commands[kubectl] ]] && source <(kubectl completion zsh)
+zstyle ':completion:*' menu select
 
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-export PATH=$HOME:/usr/local/sbin:~/bin/:~/src/pulsara/devops/deployment/bin:/usr/local/opt/terraform@0.13/bin:$PATH
-export PATH="/opt/homebrew/opt/mysql-client/bin:$PATH"
-export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+# Search paths, preserving command precedence.
+path=(
+  "${KREW_ROOT:-$HOME/.krew}/bin"
+  /opt/homebrew/opt/mysql-client/bin
+  "${ASDF_DATA_DIR:-$HOME/.asdf}/shims"
+  "${path[@]}"
+)
+### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
+export PATH="/Users/cgerstle/.rd/bin:$PATH"
+### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
+export PATH="${HOME}/.local/bin:/usr/local/sbin:~/bin/:$PATH"
 
-setopt HIST_IGNORE_DUPS
-setopt APPENDHISTORY     #Append history to the history file (no overwriting)
-# setopt SHAREHISTORY      #Share history across terminals
-setopt INCAPPENDHISTORY  #Immediately append to the history file, not just when a term is killed
+# Append history immediately; keep separate live histories in each terminal.
+setopt HIST_IGNORE_DUPS APPENDHISTORY INCAPPENDHISTORY
 HISTFILE=~/.histfile
 HISTSIZE=1000
 SAVEHIST=1000
@@ -30,14 +39,9 @@ ZSH_AUTOSUGGEST_HISTORY_IGNORE=('cd *')
 
 source ~/.alias
 
-# asdf and SDK stuff
-. /opt/homebrew/opt/asdf/libexec/asdf.sh
-
 # Use vim cli mode
 bindkey -v
 export KEYTIMEOUT=1
-set editing-mode vi
-set blink-matching-paren on
 
 # home/end fixes for mac & iterm2
 bindkey '^[[H' beginning-of-line
@@ -65,17 +69,33 @@ bindkey -M vicmd 'J' up-history
 
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
-export HOMEBREW_GITHUB_API_TOKEN=$(cat ~/.config/gh/pat)
 export GREP_OPTIONS="--color=always"
 
+# Default terminal editor and preferred full-screen editor for CLI tools.
+export EDITOR=vim
+export VISUAL="zed --wait"
 
-# Created by `pipx` on 2022-10-11 20:00:33
-export PATH="$PATH:/Users/caseygerstle/.local/bin"
-. ~/.asdf/plugins/java/set-java-home.zsh
+# Discover kubeconfigs without walking the Kubernetes cache or including backups.
+export KUBECONFIG="$(
+  find "$HOME/.kube" -path "$HOME/.kube/cache" -prune -o \
+    -type f -name 'config*' ! -path '*bak*' -print | tr '\n' ':'
+)"
 
-### MANAGED BY RANCHER DESKTOP START (DO NOT EDIT)
-export PATH="/Users/caseygerstle/.rd/bin:$PATH"
-### MANAGED BY RANCHER DESKTOP END (DO NOT EDIT)
+export ODA_IT_HOME='/Users/cgerstle/src/o/oda/oda-control-plane-app-it'
+export OMNI_CURL_HOME='/Users/cgerstle/.local/bin'
+export OMNI_CURL_ARGS='-a oci-security-token -p DEFAULT --tlsTrust /Users/cgerstle/.local/certs/tls-ca-bundle-pc-iad.pem -v'
 
-export LIQUIBASE_HOME=/opt/homebrew/opt/liquibase/libexec
-export _JAVA_OPTIONS="-Djava.net.preferIPv4Stack=true"
+# SDKMAN registers completions after compinit.
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+
+# Set up fzf key bindings and fuzzy completion
+_fzf_excludes='--exclude Library --exclude node_modules --exclude .terraform --exclude target --exclude build --exclude dist'
+export FZF_DEFAULT_COMMAND="fd --type f --strip-cwd-prefix $_fzf_excludes; for dir in .config .local; do [ -d \"\$dir\" ] && fd --type f --hidden $_fzf_excludes . \"\$dir\"; done"
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND="fd --type d --strip-cwd-prefix $_fzf_excludes; for dir in .config .local; do [ -d \"\$dir\" ] && printf \"%s\\n\" \"\$dir\" && fd --type d --hidden $_fzf_excludes . \"\$dir\"; done"
+unset _fzf_excludes
+export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border --info=inline --cycle'
+export FZF_CTRL_T_OPTS="--preview 'bat --style=numbers --color=always --line-range :200 {}'"
+export FZF_ALT_C_OPTS="--preview 'ls -la {}'"
+source <(fzf --zsh)

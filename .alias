@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------
 # misc
 # ------------------------------------------------------------------------------
-alias weather='curl wttr.in/Santa_Cruz'
+alias weather='curl wttr.in/Santa_CruzuQ2'
 alias hg='history 1 | grep'
 fe () { find . -name $1 -exec vim {} + ; }
 rm-known-host () { sed -i .bak "$1d" ~/.ssh/known_hosts }
@@ -10,13 +10,20 @@ alias curl="curl -s"
 alias gw="./gradlew"
 alias tf="terraform"
 alias week='date +"%Y: week %V"'
+codex() {
+    local cfg="$HOME/.codex/config.toml"
+    local model_setting effort_setting
+    model_setting=$(sed -n '/^[[:space:]]*\[/q; /^[[:space:]]*model[[:space:]]*=/p' "$cfg")
+    effort_setting=$(sed -n '/^[[:space:]]*\[/q; /^[[:space:]]*model_reasoning_effort[[:space:]]*=/p' "$cfg")
+    command codex --approve-for-me -c "$model_setting" -c "$effort_setting" "$@"
+  }
 
 # ------------------------------------------------------------------------------
 # vi...
 # ------------------------------------------------------------------------------
 alias vim="vim"
-alias e="vim"
-alias :e="vim"
+alias e='vim $(fzf --preview="bat --color=always {}")'
+alias :e='e'
 
 # ------------------------------------------------------------------------------
 # mac stuff
@@ -28,7 +35,18 @@ ql () { qlmanage -p "$*" >& /dev/null; }    # ql:           Opens any file in Ma
 # ------------------------------------------------------------------------------
 # git
 # ------------------------------------------------------------------------------
-alias git-prune-merged='comm -12 <(git branch | sed "s/ *//g") <(git remote prune origin | sed "s/^.*origin\///g") | xargs -L1 -J % git branch -D %'
+# Allow this function to replace a legacy alias with the same name.
+unalias git-prune-merged 2>/dev/null
+git-prune-merged() {
+    local branch
+    local -a branches
+
+    while IFS= read -r branch; do
+        branches+=("$branch")
+    done < <(git branch -vv | awk '$0 ~ /: gone]/ { if ($1 == "+") next; print ($1 == "*" ? $2 : $1) }')
+
+    (( ${#branches[@]} )) && git branch -D -- "${branches[@]}"
+}
 function parse_git_branch () {
   git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
 }
@@ -42,12 +60,12 @@ alias git-branch-desc='git branch | while read line; do
     fi
 done'
 alias gitroot='cd $(git rev-parse --show-toplevel)'
-alias git-reset='git m && git pull && git-prune-merged'
+alias git-reboot='git m && git fetch --prune origin && git pull --ff-only && git worktree prune --verbose && git-prune-merged'
 
 # ------------------------------------------------------------------------------
 # containers
 # ------------------------------------------------------------------------------
-function dsh() { docker exec -e COLUMNS="`tput cols`" -e LINES="`tput lines`" -it $(docker ps | grep --color=never $1 | cut -d" " -f1) /bin/bash; }
+function dsh() { docker exec -e COLUMNS="`tput cols`" -e LINES="`tput lines`" -it $(docker ps --format '{{.Names}} {{.ID}}' | grep --color=never $1 | cut -d" " -f1) /bin/bash; }
 function dstart() { docker container start $(docker ps -a | grep --color=never $1 | cut -d " " -f1); }
 function dstop() { docker container stop $(docker ps -a | grep --color=never $1 | cut -d " " -f1); }
 function dlog() { docker logs -f --since 1m $(docker ps -a | grep --color=never $1 | cut -d " " -f1); }
@@ -60,10 +78,10 @@ function klog() {
 # ------------------------------------------------------------------------------
 # ruby
 # ------------------------------------------------------------------------------
-alias be='bundle exec'
-alias br='be rake'
-alias c='br c'
-alias cop='be rubocop'
+# alias be='bundle exec'
+# alias br='be rake'
+# alias c='br c'
+# alias cop='be rubocop'
 
 
 # ------------------------------------------------------------------------------
@@ -193,4 +211,137 @@ sdm-close() {
         fi
     done <<< "$sources"
     echo "done."
+}
+
+# ------------------------------------------------------------------------------
+# oracle-sre
+# ------------------------------------------------------------------------------
+# alias scm-ssh-add='SSH_AUTH_SOCK=~/.ssh/scm-agent.sock ssh-add'
+alias oa='oci session refresh || oci-auth.sh'
+alias or='oci session refresh'
+alias sa='scm-auth.sh'
+alias cells='cat ~/.local/cells.yaml| yq'
+resolve_devops_url() {
+    if [[ -z "$1" ]]; then
+        echo "usage: resolve_devops_url <devops-short-url-or-id>" >&2
+        return 2
+    fi
+
+    local id token
+    id="${1##*/}"
+    id="${id%%\?*}"
+
+    token="$(ssh operator-access-token.svc.ad1.r2 generate --mode jwt)" || return
+
+    command curl --silent --show-error --fail \
+        --header "Authorization: Bearer ${token}" \
+        "https://devops.oci.oraclecorp.com/api/ui-service/v1/saved-queries/${id}" |
+        jq --exit-status --raw-output '.originalQuery'
+}
+alias update-ssh-config='pushd ${HOME}/.ssh; for it in oda-configs ossh_configs ssh_configs; do; (cd -- "$it" && git pull); done; popd'
+
+# ------------------------------------------------------------------------------
+# fzf helpers
+# ------------------------------------------------------------------------------
+ef() {
+    local file
+    file=$(FZF_DEFAULT_COMMAND="${FZF_DEFAULT_COMMAND:-fd --type f --strip-cwd-prefix}" fzf --preview 'bat --style=numbers --color=always --line-range :200 {}') || return
+
+    ${EDITOR:-vim} -- "$file"
+}
+
+cdf() {
+    local dir
+    dir=$(FZF_DEFAULT_COMMAND="${FZF_ALT_C_COMMAND:-fd --type d --strip-cwd-prefix}" fzf --preview 'ls -la {}') || return
+
+    cd -- "$dir"
+}
+
+_fzf_any_dir() {
+    local -a roots existing_roots
+    local root
+
+    if [ "${#FZF_ANY_DIR_ROOTS[@]}" -gt 0 ]; then
+        roots=("${FZF_ANY_DIR_ROOTS[@]}")
+    else
+        roots=("$HOME/src" "$HOME/.config" "$HOME/.local")
+    fi
+
+    for root in "${roots[@]}"; do
+        [ -d "$root" ] && existing_roots+=("$root")
+    done
+
+    if [ "${#existing_roots[@]}" -eq 0 ]; then
+        echo "no FZF_ANY_DIR_ROOTS directories found" >&2
+        return 1
+    fi
+
+    {
+        printf "%s\n" "${existing_roots[@]}"
+        fd --type d --hidden --exclude .git --exclude Library --exclude node_modules --exclude .terraform --exclude target --exclude build --exclude dist . "${existing_roots[@]}"
+    } | awk '!seen[$0]++' | fzf --preview 'ls -la {}'
+}
+
+cda() {
+    local dir
+    dir=$(_fzf_any_dir) || return
+
+    cd -- "$dir"
+}
+
+runf() {
+    local file
+    file=$(FZF_DEFAULT_COMMAND="${FZF_DEFAULT_COMMAND:-fd --type f --strip-cwd-prefix}" fzf --preview 'bat --style=numbers --color=always --line-range :200 {}') || return
+
+    "$@" -- "$file"
+}
+
+_run_in_dir() {
+    local dir cmd
+
+    dir=$1
+    cmd=$2
+    shift 2
+
+    case "$cmd" in
+        codex)
+            "$cmd" -C "$dir" "$@"
+            ;;
+        git|make)
+            "$cmd" -C "$dir" "$@"
+            ;;
+        *)
+            "$cmd" "$@" -- "$dir"
+            ;;
+    esac
+}
+
+rundir() {
+    if [ "$#" -eq 0 ]; then
+        echo "usage: rundir <command> [args...]" >&2
+        return 2
+    fi
+
+    local dir cmd
+    dir=$(FZF_DEFAULT_COMMAND="${FZF_ALT_C_COMMAND:-fd --type d --strip-cwd-prefix}" fzf --preview 'ls -la {}') || return
+
+    cmd=$1
+    shift
+
+    _run_in_dir "$dir" "$cmd" "$@"
+}
+
+rundira() {
+    if [ "$#" -eq 0 ]; then
+        echo "usage: rundira <command> [args...]" >&2
+        return 2
+    fi
+
+    local dir cmd
+    dir=$(_fzf_any_dir) || return
+
+    cmd=$1
+    shift
+
+    _run_in_dir "$dir" "$cmd" "$@"
 }

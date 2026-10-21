@@ -7,5 +7,9 @@ set shiftwidth=4
 set expandtab
 
 set nu
+set hlsearch
+set ignorecase
+set smartcase
 
 syntax on
+
