@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""Update the default branch and offer verified, interactive local cleanup."""
+import argparse
+import fnmatch
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+
+class Failure(Exception):
+    pass
+
+
+def run(command, cwd=None, allowed=(0,), input_text=None, stream=False):
+    env = dict(os.environ, GIT_OPTIONAL_LOCKS='0')
+    result = subprocess.run(command, cwd=cwd, env=env,
+                            stdout=None if stream else subprocess.PIPE,
+                            stderr=None if stream else subprocess.PIPE,
+                            input=input_text, text=True, errors='surrogateescape')
+    if result.returncode not in allowed:
+        raise Failure((result.stderr or result.stdout or '').strip() or
+                      '{} exited {}'.format(command[0], result.returncode))
+    return result
+
+
+class Reboot:
+    def __init__(self):
+        self.invoking = Path(run(['git', 'rev-parse', '--show-toplevel']).stdout.strip()).resolve()
+        self.root = self.invoking
+        self.default = None
+        self.base = None
+        self.trees = {}
+        self.protected = ['main', 'master', 'trunk', 'develop', 'development', 'backup/*', 'release/*']
+        self.protected += self.git('config', '--get-all', 'reboot.protectBranch', allowed=(0, 1)).splitlines()
+
+    def git(self, *args, cwd=None, allowed=(0,)):
+        return run(['git', *args], cwd=cwd or self.root, allowed=allowed).stdout.rstrip('\n')
+
+    def git_live(self, *args, cwd=None):
+        run(['git', *args], cwd=cwd or self.root, stream=True)
+
+    def worktrees(self):
+        result = []
+        current = {}
+        for field in self.git('worktree', 'list', '--porcelain', '-z').split('\0'):
+            if not field:
+                if current:
+                    result.append(current)
+                    current = {}
+                continue
+            key, _, value = field.partition(' ')
+            current[key] = value
+        if current:
+            result.append(current)
+        return result
+
+    def default_branch(self, online=False):
+        configured = self.git('config', '--get', 'reboot.defaultBranch', allowed=(0, 1))
+        if configured:
+            return configured
+        if online:
+            output = self.git('ls-remote', '--symref', 'origin', 'HEAD')
+            for line in output.splitlines():
+                if line.startswith('ref: refs/heads/') and line.endswith('\tHEAD'):
+                    return line[len('ref: refs/heads/'):].split('\t')[0]
+            raise Failure('origin did not advertise a default branch; set reboot.defaultBranch.')
+        ref = self.git('symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD', allowed=(0, 1))
+        if ref:
+            return ref.removeprefix('refs/remotes/origin/')
+        # Offline previews must not contact the remote or guess between two defaults.
+        found = [name for name in ('main', 'master')
+                 if run(['git', 'show-ref', '--verify', '--quiet', 'refs/heads/' + name],
+                     cwd=self.root, allowed=(0, 1)).returncode == 0]
+        if len(found) == 1:
+            return found[0]
+        raise Failure('Cannot determine the default branch offline; set reboot.defaultBranch.')
+
+    def update(self):
+        print('Fetching origin and pruning stale remote refs...', flush=True)
+        self.git_live('fetch', '--prune', 'origin')
+        self.default = self.default_branch(online=True)
+        ref = 'refs/heads/' + self.default
+        target = next((w for w in self.worktrees() if w.get('branch') == ref), None)
+        path = Path(target['worktree']) if target else self.invoking
+        if self.git('status', '--porcelain=v1', '--untracked-files=all', cwd=path):
+            raise Failure('Default-branch update needs a clean checkout: ' + str(path))
+        if target and 'locked' in target:
+            raise Failure('Default-branch checkout is locked: ' + str(path))
+        if not target:
+            self.git_live('switch', self.default, cwd=path)
+        print('Updating {} in {!r}'.format(self.default, str(path)), flush=True)
+        self.git_live('pull', '--ff-only', 'origin', self.default, cwd=path)
+        output = self.git('worktree', 'prune', '--verbose')
+        if output:
+            print(output)
+
+    def prepare(self):
+        self.default = self.default or self.default_branch()
+        self.base = self.git('rev-parse', '--verify', 'refs/heads/' + self.default)
+        self.protected.append(self.default)
+        for line in self.git('log', 'refs/heads/' + self.default, '--format=%T%x00%H').splitlines():
+            tree, commit = line.split('\0')
+            self.trees.setdefault(tree, commit)
+
+    def branches(self):
+        rows = self.git('for-each-ref', '--format=%(refname)%00%(objectname)%00%(upstream:short)%00%(upstream:track)',
+                        'refs/heads/').splitlines()
+        return [dict(zip(('ref', 'oid', 'upstream', 'tracking'), row.split('\0'))) for row in rows]
+
+    def evidence(self, oid):
+        result = run(['git', 'merge-base', '--is-ancestor', oid, self.base], cwd=self.root, allowed=(0, 1))
+        if result.returncode == 0:
+            return ('ancestor', self.base)
+        tree = self.git('rev-parse', oid + '^{tree}')
+        if tree in self.trees:
+            return ('exact tree', self.trees[tree])
+        return None
+
+    def protected_branch(self, branch):
+        return any(fnmatch.fnmatchcase(branch, pattern) for pattern in self.protected)
+
+    def herdr(self):
+        if not shutil.which('herdr'):
+            if (Path.home() / '.herdr').exists() or (Path.home() / '.config/herdr').exists():
+                raise Failure('Herdr is configured but its CLI is unavailable')
+            return {}
+        if os.environ.get('HERDR_ENV') != '1':
+            raise Failure('Herdr workspace state requires a Herdr terminal (HERDR_ENV=1)')
+        try:
+            data = json.loads(run(['herdr', 'worktree', 'list', '--cwd', str(self.root)]).stdout)
+            rows = data['result']['worktrees']
+            if not isinstance(rows, list):
+                raise ValueError('worktrees is not a list')
+            return {str(Path(w['path']).resolve()): w.get('open_workspace_id') for w in rows}
+        except (ValueError, KeyError, TypeError, OSError, Failure) as error:
+            raise Failure('Cannot inspect Herdr workspaces: ' + str(error)) from error
+
+    @staticmethod
+    def owned(path):
+        return Path(path).resolve().is_relative_to((Path.home() / '.herdr/worktrees').resolve())
+
+    def files(self, path):
+        dirty = self.git('status', '--porcelain=v1', '-z', '--untracked-files=all', cwd=path)
+        ignored = self.git('status', '--porcelain=v1', '-z', '--ignored=matching',
+                           '--untracked-files=normal', cwd=path)
+        return dirty, tuple(f[3:] for f in ignored.split('\0') if f.startswith('!! '))
+
+    def skip_worktree(self, w, herdr, herdr_error=None):
+        path = Path(w['worktree']).resolve()
+        branch = w.get('branch', '').removeprefix('refs/heads/')
+        if path == self.invoking:
+            return 'invoking checkout'
+        if path == Path(self.worktrees()[0]['worktree']).resolve():
+            return 'primary checkout'
+        if 'locked' in w:
+            return 'locked'
+        if 'prunable' in w or not path.is_dir():
+            return 'missing directory (metadata pruning handles this)'
+        if not branch:
+            return 'detached HEAD'
+        if self.protected_branch(branch):
+            return 'protected branch'
+        if herdr_error:
+            return herdr_error
+        if shutil.which('herdr') and str(path) not in herdr:
+            return 'Herdr did not report this worktree; activity unknown'
+        if herdr.get(str(path)):
+            return 'open Herdr workspace ' + herdr[str(path)]
+        if self.owned(path) and not shutil.which('herdr'):
+            return 'Herdr-owned; CLI unavailable'
+        if self.files(path)[0]:
+            return 'dirty or untracked files'
+        for directory in (Path.home() / '.local/bin', Path.home() / 'bin'):
+            if directory.is_dir():
+                for entry in directory.iterdir():
+                    if entry.is_symlink() and entry.resolve().is_relative_to(path):
+                        return 'referenced by launcher ' + str(entry)
+        return None
+
+    def describe(self, branch, evidence):
+        name = branch['ref'].removeprefix('refs/heads/')
+        print('  Branch: ' + name)
+        print('  Integration: {} match on {} at {}'.format(evidence[0], self.default, evidence[1][:12]))
+        print('  Upstream: ' + ((branch['upstream'] + ' ' + branch['tracking']).strip() or 'none'))
+        if evidence[0] == 'exact tree':
+            print('  Removing this branch discards its distinct commit history (squash-equivalent files).')
+
+    @staticmethod
+    def confirm(question, preview):
+        if preview:
+            return False
+        while True:
+            try:
+                answer = input(question + ' [y/N/q] ').strip().lower()
+            except EOFError:
+                raise StopIteration
+            if answer == 'q':
+                raise StopIteration
+            if answer in ('', 'n', 'no'):
+                return False
+            if answer in ('y', 'yes'):
+                return True
+            print('Please enter y, n, or q.')
+
+    def unchanged(self, branch):
+        return (self.git('rev-parse', '--verify', 'refs/heads/' + self.default) == self.base and
+                self.git('rev-parse', '--verify', branch['ref'], allowed=(0, 128)) == branch['oid'])
+
+    def delete_branch(self, branch):
+        name = branch['ref'].removeprefix('refs/heads/')
+        if not self.unchanged(branch) or any(w.get('branch') == branch['ref'] for w in self.worktrees()):
+            print('  Kept branch: tip, default branch, or checkout changed.')
+            return
+        # Verify the reviewed base and candidate together while Git holds their ref locks.
+        # branch -d uses the configured upstream, which may lag even after a main merge.
+        transaction = 'start\nverify refs/heads/{} {}\ndelete {} {}\nprepare\ncommit\n'.format(
+            self.default, self.base, branch['ref'], branch['oid'])
+        run(['git', 'update-ref', '--stdin'], cwd=self.root, input_text=transaction)
+        # Match branch deletion's config cleanup, preserving a concurrently recreated ref.
+        print('Deleted branch {} (was {}).'.format(name, branch['oid'][:12]))
+        if run(['git', 'show-ref', '--verify', '--quiet', branch['ref']],
+               cwd=self.root, allowed=(0, 1)).returncode != 0:
+            keys = self.git('config', '--get-regexp', '^' + re.escape('branch.' + name + '.'), allowed=(0, 1))
+            if keys:
+                self.git('config', '--remove-section', 'branch.' + name)
+
+    def remove_worktree(self, w, branch, ignored):
+        path = w['worktree']
+        if not self.owned(path):
+            print(self.git('worktree', 'remove', '--', path))
+            return
+        print('  Opening temporary Herdr workspace without focus for removal...', flush=True)
+        workspace = None
+        try:
+            output = run(['herdr', 'worktree', 'open', '--cwd', str(self.root), '--path', path, '--no-focus'])
+            result = json.loads(output.stdout)['result']
+            workspace = result['workspace']['workspace_id']
+            if not isinstance(workspace, str) or not workspace:
+                raise ValueError('invalid workspace ID')
+            if result.get('already_open') is not False:
+                raise Failure('Herdr reports a pre-existing or unverified workspace; refusing removal')
+            if Path(result['worktree']['path']).resolve() != Path(path).resolve():
+                raise Failure('Herdr returned a different checkout; refusing removal')
+            fresh = next((n for n in self.worktrees() if n['worktree'] == path), None)
+            if (self.herdr().get(str(Path(path).resolve())) != workspace or fresh != w or
+                    not self.unchanged(branch) or self.files(path) != ('', ignored)):
+                raise Failure('workspace identity, checkout, or files changed after opening')
+            run(['herdr', 'worktree', 'remove', '--workspace', workspace])
+        except (Failure, ValueError, KeyError, TypeError) as error:
+            raise Failure('Herdr removal stopped; inspect workspace {} at {!r} (may be left open): {}'.format(
+                workspace or 'unknown', path, error)) from error
+
+    def cleanup(self, dry_run=False):
+        self.prepare()
+        preview = dry_run or not sys.stdin.isatty()
+        print('\nCleanup against {} ({}).'.format(self.default, self.base[:12]))
+        if dry_run:
+            print('Dry run: using local refs; no fetch, checkout, update, prune, or deletion.')
+        elif preview:
+            print('Noninteractive: showing candidates only; no worktree or branch deletion.')
+        original_worktrees = self.worktrees()
+        checked_out = {w.get('branch') for w in original_worktrees}
+        branches = {b['ref']: b for b in self.branches()}
+        try:
+            herdr, herdr_error = self.herdr(), None
+        except Failure as error:
+            herdr, herdr_error = {}, str(error)
+        for w in original_worktrees:
+            path = w['worktree']
+            reason = self.skip_worktree(w, herdr, herdr_error)
+            branch = branches.get(w.get('branch'))
+            evidence = self.evidence(branch['oid']) if branch else None
+            if reason or not evidence:
+                print('Skip {!r}: {}.'.format(path, reason or 'integration unproven'))
+                continue
+            ignored = self.files(path)[1]
+            print('\nWorktree: {!r}'.format(path))
+            self.describe(branch, evidence)
+            if ignored:
+                print('  Removal also deletes ignored files/directories: ' + ', '.join(repr(p) for p in ignored))
+            if self.owned(path):
+                print('  Via Herdr: temporarily opens a background workspace, then removes it.')
+            if not self.confirm('Remove worktree and branch?', preview):
+                continue
+            fresh = next((n for n in self.worktrees() if n['worktree'] == path), None)
+            fresh_herdr = self.herdr()
+            if (not fresh or fresh != w or not self.unchanged(branch) or
+                    self.skip_worktree(fresh, fresh_herdr) or self.files(path)[1] != ignored):
+                print('  Kept: worktree, files, branch, or activity changed while prompting.')
+                continue
+            self.remove_worktree(w, branch, ignored)
+            self.delete_branch(branch)
+        for branch in branches.values():
+            if branch['ref'] in checked_out:
+                continue  # Declined/skipped worktrees must never turn into branch-only prompts.
+            name = branch['ref'].removeprefix('refs/heads/')
+            evidence = self.evidence(branch['oid'])
+            if self.protected_branch(name) or not evidence:
+                print('Skip branch {}: {}.'.format(name, 'protected' if self.protected_branch(name) else 'integration unproven'))
+                continue
+            print('\nStandalone branch: ' + name)
+            self.describe(branch, evidence)
+            if self.confirm('Remove branch?', preview):
+                self.delete_branch(branch)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--no-cleanup', action='store_true', help='update only; do not offer cleanup')
+    mode.add_argument('--cleanup-only', action='store_true', help='offer cleanup using local refs; do not update')
+    parser.add_argument('--dry-run', action='store_true', help='preview using local refs without making any changes')
+    args = parser.parse_args()
+    try:
+        reboot = Reboot()
+        if not args.dry_run and not args.cleanup_only:
+            reboot.update()
+        if not args.no_cleanup:
+            reboot.cleanup(dry_run=args.dry_run)
+        elif args.dry_run:
+            print('Would fetch/prune origin, update its default branch with ff-only, and prune stale worktree metadata.')
+        return 0
+    except StopIteration:
+        print('\nCleanup stopped.')
+        return 0
+    except KeyboardInterrupt:
+        print('\nInterrupted.', file=sys.stderr)
+        return 130
+    except (Failure, OSError) as error:
+        print('git-reboot: ' + str(error), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

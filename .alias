@@ -35,18 +35,6 @@ ql () { qlmanage -p "$*" >& /dev/null; }    # ql:           Opens any file in Ma
 # ------------------------------------------------------------------------------
 # git
 # ------------------------------------------------------------------------------
-# Allow this function to replace a legacy alias with the same name.
-unalias git-prune-merged 2>/dev/null
-git-prune-merged() {
-    local branch
-    local -a branches
-
-    while IFS= read -r branch; do
-        branches+=("$branch")
-    done < <(git branch -vv | awk '$0 ~ /: gone]/ { if ($1 == "+") next; print ($1 == "*" ? $2 : $1) }')
-
-    (( ${#branches[@]} )) && git branch -D -- "${branches[@]}"
-}
 function parse_git_branch () {
   git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
 }
@@ -60,7 +48,6 @@ alias git-branch-desc='git branch | while read line; do
     fi
 done'
 alias gitroot='cd $(git rev-parse --show-toplevel)'
-alias git-reboot='git m && git fetch --prune origin && git pull --ff-only && git worktree prune --verbose && git-prune-merged'
 
 # ------------------------------------------------------------------------------
 # containers

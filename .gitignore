@@ -1,1 +1,4 @@
 .cfg
+
+# Local snapshots of shell settings; keep source and tests tracked.
+/.local/share/git-reboot/alias.before-*
